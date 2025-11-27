@@ -1,207 +1,10 @@
-# import streamlit as st
-# import pandas as pd
-# import numpy as np
-# import joblib
-# from sklearn.ensemble import RandomForestClassifier
-# from sklearn.model_selection import train_test_split
-# from sklearn.metrics import classification_report, roc_auc_score
-# from sklearn.impute import SimpleImputer
-# from sklearn.utils import resample
-
-# # ----------------------------------------------------
-# # PAGE CONFIG
-# # ----------------------------------------------------
-# st.set_page_config(page_title="ChurnGuard – Universal Trainer", layout="wide")
-
-# st.title("ChurnGuard – Train On ANY Data")
-# st.write("✔ Select churn column OR auto-create one\n✔ Never errors\n✔ Always trains a model")
-
-# # ----------------------------------------------------
-# # UPLOAD CSV
-# # ----------------------------------------------------
-# uploaded = st.file_uploader("Upload your customer CSV file", type=["csv"])
-
-# if uploaded is None:
-#     st.info("Upload a CSV file to continue.")
-#     st.stop()
-
-# df = pd.read_csv(uploaded)
-
-# st.subheader("📄 Data Preview")
-# st.write(df.head())
-
-# # ----------------------------------------------------
-# # TARGET COLUMN SELECTION
-# # ----------------------------------------------------
-# st.sidebar.header("1. Select (or Auto-Generate) Target Column")
-
-# target_choice = st.sidebar.selectbox(
-#     "Choose churn label column:",
-#     ["--auto-create--"] + list(df.columns)
-# )
-
-# numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
-
-# if target_choice == "--auto-create--":
-#     st.warning("⚠ No churn column selected. Auto-creating one...")
-
-#     if len(numeric_cols) == 0:
-#         df["churn"] = np.random.randint(0, 2, size=len(df))
-#         target = "churn"
-#         st.success("✔ Auto-created random churn labels (no numeric columns available).")
-
-#     else:
-#         metric = numeric_cols[0]
-#         cutoff = df[metric].quantile(0.30)
-#         df["churn"] = (df[metric] <= cutoff).astype(int)
-#         target = "churn"
-#         st.success(f"✔ Auto-created churn column using `{metric}` bottom 30% values.")
-
-# else:
-#     target = target_choice
-#     st.success(f"✔ Using selected churn column: `{target}`")
-
-# # ----------------------------------------------------
-# # FIX SINGLE-CLASS TARGET
-# # ----------------------------------------------------
-# if df[target].nunique() < 2:
-#     st.warning("⚠ Selected churn column has only ONE class. Fixing automatically...")
-
-#     if len(numeric_cols) > 0:
-#         metric = numeric_cols[0]
-#         df[target] = (df[metric] <= df[metric].median()).astype(int)
-#         st.success(f"✔ Converted numeric column `{metric}` into a 2-class churn label.")
-#     else:
-#         df[target] = np.random.randint(0, 2, size=len(df))
-#         st.success("✔ Randomly created 2-class churn labels.")
-
-# # ----------------------------------------------------
-# # FEATURE SELECTION
-# # ----------------------------------------------------
-# st.sidebar.header("2. Feature Selection")
-
-# available_features = [c for c in df.columns if c != target]
-
-# features = st.sidebar.multiselect(
-#     "Select features to train on:",
-#     available_features,
-#     default=available_features[: min(6, len(available_features))]
-# )
-
-# if not features:
-#     st.warning("No features selected. Auto-selecting numeric columns.")
-#     features = numeric_cols.copy()
-
-# # ----------------------------------------------------
-# # PREPROCESSING
-# # ----------------------------------------------------
-# X = df[features].copy()
-# y = df[target].astype(int)
-
-# numeric_cols = X.select_dtypes(include=np.number).columns.tolist()
-# categorical_cols = [c for c in X.columns if c not in numeric_cols]
-
-# # Impute
-# if numeric_cols:
-#     imp = SimpleImputer(strategy="median")
-#     X[numeric_cols] = imp.fit_transform(X[numeric_cols])
-
-# # One-hot encode
-# if categorical_cols:
-#     X = pd.get_dummies(X, columns=categorical_cols, drop_first=True)
-
-# st.write("🧠 Feature matrix shape:", X.shape)
-
-# # ----------------------------------------------------
-# # FIX IMBALANCE via UPSAMPLING
-# # ----------------------------------------------------
-# if df[target].value_counts().min() < 0.1 * len(df):
-#     st.warning("⚠ Imbalanced dataset detected — applying oversampling...")
-
-#     X["__target__"] = y
-#     majority = X[X["__target__"] == 0]
-#     minority = X[X["__target__"] == 1]
-
-#     minority_upsampled = resample(
-#         minority, replace=True, n_samples=len(majority), random_state=42
-#     )
-
-#     X = pd.concat([majority, minority_upsampled])
-#     y = X["__target__"]
-#     X = X.drop(columns=["__target__"])
-
-#     st.success("✔ Balanced dataset created.")
-
-# # ----------------------------------------------------
-# # MODEL TRAINING
-# # ----------------------------------------------------
-# st.sidebar.header("3. Train the Model")
-
-# test_size = st.sidebar.slider("Test Size (%)", 10, 40, 20) / 100
-
-# if st.button("Train Model"):
-
-#     X_train, X_test, y_train, y_test = train_test_split(
-#         X, y, test_size=test_size, random_state=42
-#     )
-
-#     model = RandomForestClassifier(n_estimators=150, random_state=42)
-#     model.fit(X_train, y_train)
-
-#     preds = model.predict(X_test)
-
-#     # SAFE probability block
-#     try:
-#         raw_proba = model.predict_proba(X_test)
-#         proba = raw_proba[:, 1] if raw_proba.shape[1] > 1 else np.zeros(len(X_test))
-#     except:
-#         proba = np.zeros(len(X_test))
-
-#     # ----------------------------------------------------
-#     # EVALUATION
-#     # ----------------------------------------------------
-#     st.subheader("📊 Model Evaluation")
-#     st.text(classification_report(y_test, preds))
-
-#     try:
-#         st.write("ROC-AUC:", roc_auc_score(y_test, proba))
-#     except:
-#         st.write("ROC-AUC: Not available")
-
-#     # ----------------------------------------------------
-#     # FULL DATASET SCORES
-#     # ----------------------------------------------------
-#     try:
-#         raw_full = model.predict_proba(X)
-#         full_proba = raw_full[:, 1] if raw_full.shape[1] > 1 else np.zeros(len(X))
-#     except:
-#         full_proba = np.zeros(len(X))
-
-#     result = df.copy()
-#     result["churn_score"] = full_proba
-
-#     st.subheader("🔥 Top Customers by Churn Risk")
-#     st.write(result.sort_values("churn_score", ascending=False).head(15))
-
-#     # Download CSV
-#     st.download_button(
-#         "Download results CSV",
-#         result.to_csv(index=False),
-#         "churn_results.csv",
-#         "text/csv"
-#     )
-
-#     # Download model
-#     joblib.dump(model, "model.pkl")
-#     with open("model.pkl", "rb") as f:
-#         st.download_button("Download Trained Model", f, "model.pkl")
-
-
+# Basic Imports
 import streamlit as st
 import pandas as pd
 import numpy as np
 import joblib
 
+# Machine Learning Models
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
@@ -214,198 +17,294 @@ from sklearn.metrics import classification_report, roc_auc_score
 from sklearn.impute import SimpleImputer
 from sklearn.utils import resample
 
-# ----------------------------------------------------
-# PAGE CONFIG
-# ----------------------------------------------------
-st.set_page_config(page_title="ChurnGuard – Multi-Model Trainer", layout="wide")
+# Sentiment Analysis
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+analyzer = SentimentIntensityAnalyzer()
 
-st.title("ChurnGuard – Train ANY Model on ANY Data")
-st.write("✔ Select churn column\n✔ Select model type\n✔ Error-proof training")
+# Title Page
+st.set_page_config(page_title="ChurnGuard AI", layout="wide")
 
-# ----------------------------------------------------
-# UPLOAD CSV
-# ----------------------------------------------------
-uploaded = st.file_uploader("Upload your customer CSV file", type=["csv"])
+st.title("🔥 ChurnGuard AI – Dual Mode Churn Prediction (ML + Sentiment)")
+st.write("""
+Upload:
+- **Customer Data (numerical/categorical)** → ML-based churn prediction  
+- **Customer Feedback (text)** → Sentiment-based churn prediction  
 
-if uploaded is None:
-    st.info("Upload a CSV to continue.")
-    st.stop()
+The app automatically routes to the correct analysis mode.
+""")
 
-df = pd.read_csv(uploaded)
-st.subheader("📄 Data Preview")
-st.write(df.head())
+st.header("📌 Step 1 — Upload Your Input Files")
 
-numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
+col1, col2 = st.columns(2)
 
-# ----------------------------------------------------
-# TARGET COLUMN SELECTION
-# ----------------------------------------------------
-st.sidebar.header("1. Select Target Column")
+with col1:
+    st.subheader("📂 Customer Data (Numerical & Categorical)")
+    num_file = st.file_uploader("Upload Customer CSV", type=["csv"], key="numerical")
 
-target_choice = st.sidebar.selectbox(
-    "Choose churn label column",
-    ["--auto-create--"] + list(df.columns)
-)
+with col2:
+    st.subheader("📝 Customer Feedback (Sentiment)")
+    sent_file = st.file_uploader("Upload Feedback CSV", type=["csv"], key="sentiment")
 
-if target_choice == "--auto-create--":
-    st.warning("⚠ Auto-creating churn column...")
+# Flags
+numerical_uploaded = num_file is not None
+sentiment_uploaded = sent_file is not None
 
-    if len(numeric_cols) == 0:
-        df["churn"] = np.random.randint(0, 2, len(df))
-    else:
-        metric = numeric_cols[0]
-        cutoff = df[metric].quantile(0.30)
-        df["churn"] = (df[metric] <= cutoff).astype(int)
+# SENTIMENT ANALYSIS
+if sentiment_uploaded and not numerical_uploaded:
 
-    target = "churn"
-    st.success(f"✔ Auto-created churn using `{metric}`.")
-else:
-    target = target_choice
+    st.header("🧠 Sentiment-Based Churn Prediction")
 
-# Fix single-class target
-if df[target].nunique() < 2:
-    st.warning("⚠ Target has only one class. Fixing automatically...")
-    if len(numeric_cols) > 0:
-        metric = numeric_cols[0]
-        df[target] = (df[metric] <= df[metric].median()).astype(int)
-    else:
-        df[target] = np.random.randint(0, 2, len(df))
-    st.success("✔ Fixed target column.")
+    fb = pd.read_csv(sent_file)
 
-# ----------------------------------------------------
-# FEATURE SELECTION
-# ----------------------------------------------------
-st.sidebar.header("2. Select Features")
+    if "feedback" not in fb.columns:
+        st.error("The Feedback CSV must contain a **feedback** column.")
+        st.stop()
 
-available_features = [c for c in df.columns if c != target]
+    # Make customer_id optional
+    if "customer_id" not in fb.columns:
+        fb["customer_id"] = fb.index.astype(str)
 
-features = st.sidebar.multiselect(
-    "Select features", available_features,
-    default=available_features[:6]
-)
+    # Convert to string
+    fb["customer_id"] = fb["customer_id"].astype(str)
 
-if not features:
-    st.warning("No features selected. Auto-selecting numeric columns.")
-    features = numeric_cols.copy()
-
-X = df[features].copy()
-y = df[target].astype(int)
-
-# ----------------------------------------------------
-# PREPROCESSING
-# ----------------------------------------------------
-numeric_cols = X.select_dtypes(include=np.number).columns.tolist()
-categorical_cols = [c for c in X.columns if c not in numeric_cols]
-
-if numeric_cols:
-    imp = SimpleImputer(strategy="median")
-    X[numeric_cols] = imp.fit_transform(X[numeric_cols])
-
-if categorical_cols:
-    X = pd.get_dummies(X, columns=categorical_cols, drop_first=True)
-
-st.write("🧠 Feature matrix shape:", X.shape)
-
-# ----------------------------------------------------
-# FIX IMBALANCE
-# ----------------------------------------------------
-if df[target].value_counts().min() < 0.1 * len(df):
-    st.warning("⚠ Severe imbalance detected – applying oversampling...")
-
-    X["__target__"] = y
-    majority = X[X["__target__"] == 0]
-    minority = X[X["__target__"] == 1]
-
-    minority_up = resample(minority, replace=True, n_samples=len(majority), random_state=42)
-    X = pd.concat([majority, minority_up])
-
-    y = X["__target__"]
-    X = X.drop(columns=["__target__"])
-
-    st.success("✔ Balanced dataset.")
-    
-# ----------------------------------------------------
-# MODEL SELECTION
-# ----------------------------------------------------
-st.sidebar.header("3. Select Model")
-
-model_type = st.sidebar.selectbox(
-    "Choose model:",
-    [
-        "Logistic Regression",
-        "Random Forest",
-        "Decision Tree",
-        "Gradient Boosting",
-        "KNN",
-        "SVM",
-        "Naive Bayes"
-    ]
-)
-
-def get_model(model_type):
-    """Return the appropriate ML model based on user selection."""
-    if model_type == "Logistic Regression":
-        return LogisticRegression(max_iter=500)
-    if model_type == "Random Forest":
-        return RandomForestClassifier(n_estimators=150, random_state=42)
-    if model_type == "Decision Tree":
-        return DecisionTreeClassifier(random_state=42)
-    if model_type == "Gradient Boosting":
-        return GradientBoostingClassifier()
-    if model_type == "KNN":
-        return KNeighborsClassifier()
-    if model_type == "SVM":
-        return SVC(probability=True)  # enable predict_proba
-    if model_type == "Naive Bayes":
-        return GaussianNB()
-
-# ----------------------------------------------------
-# TRAINING
-# ----------------------------------------------------
-test_size = st.sidebar.slider("Test Size (%)", 10, 40, 20) / 100
-
-if st.button("Train Model"):
-
-    model = get_model(model_type)
-
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=test_size, random_state=42
+    # Sentiment Scores
+    fb["sentiment_score"] = fb["feedback"].apply(
+        lambda x: analyzer.polarity_scores(str(x))["compound"]
     )
 
-    model.fit(X_train, y_train)
-    preds = model.predict(X_test)
+    fb["sentiment_label"] = fb["sentiment_score"].apply(
+        lambda s: "Positive" if s > 0.05 else "Negative" if s < -0.05 else "Neutral"
+    )
 
-    # Safe probability extraction
-    try:
-        proba_raw = model.predict_proba(X_test)
-        proba = proba_raw[:, 1] if proba_raw.shape[1] > 1 else np.zeros(len(X_test))
-    except:
-        proba = np.zeros(len(X_test))
+    fb["sentiment_churn_risk"] = (1 - fb["sentiment_score"]).clip(0, 1)
 
-    st.subheader(f"📊 Evaluation – {model_type}")
-    st.text(classification_report(y_test, preds))
+    st.subheader("📊 Sentiment-Based Churn Scores")
+    st.write(fb.head(20))
 
-    try:
-        st.write("ROC-AUC:", roc_auc_score(y_test, proba))
-    except:
-        st.write("ROC-AUC: Not available")
+    st.download_button(
+        "Download Sentiment Churn CSV",
+        fb.to_csv(index=False),
+        "sentiment_churn_results.csv",
+        "text/csv"
+    )
 
-    # FULL DATASET PROBABILITY
-    try:
-        full_raw = model.predict_proba(X)
-        full_proba = full_raw[:, 1] if full_raw.shape[1] > 1 else np.zeros(len(X))
-    except:
-        full_proba = np.zeros(len(X))
+    st.stop()
 
-    result = df.copy()
-    result["churn_score"] = full_proba
+# Predictive Machine Learning Modelling
+if numerical_uploaded and not sentiment_uploaded:
 
-    st.subheader("🔥 Top Customers by Churn Risk")
-    st.write(result.sort_values("churn_score", ascending=False).head(15))
+    st.header("🧠 ML-Based Churn Prediction")
 
-    st.download_button("Download CSV", result.to_csv(index=False),
-                       "churn_output.csv", "text/csv")
+    df = pd.read_csv(num_file)
+    st.subheader("Customer Data Preview")
+    st.write(df.head())
 
-    joblib.dump(model, "model.pkl")
-    with open("model.pkl", "rb") as f:
-        st.download_button("Download model.pkl", f, "model.pkl")
+    # Ensure customer_id exists
+    if "customer_id" not in df.columns:
+        df["customer_id"] = df.index.astype(str)
+
+    df["customer_id"] = df["customer_id"].astype(str)
+
+    numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
+
+    st.sidebar.header("1. Select or Create Churn Column")
+
+    target_choice = st.sidebar.selectbox(
+        "Select churn target column",
+        ["--auto-create--"] + list(df.columns)
+    )
+
+    if target_choice == "--auto-create--":
+        st.warning("Auto-creating churn column...")
+
+        if len(numeric_cols) > 0:
+            metric = numeric_cols[0]
+            cutoff = df[metric].quantile(0.30)
+            df["churn"] = (df[metric] <= cutoff).astype(int)
+        else:
+            df["churn"] = np.random.randint(0, 2, len(df))
+
+        target = "churn"
+    else:
+        target = target_choice
+
+    if df[target].nunique() < 2:
+        df[target] = np.random.randint(0, 2, len(df))
+
+    st.sidebar.header("2. Feature Selection")
+
+    available_features = [c for c in df.columns if c not in ["customer_id", target]]
+
+    features = st.sidebar.multiselect(
+        "Choose features for training",
+        available_features,
+        default=available_features[:5]
+    )
+
+    if not features:
+        features = numeric_cols.copy()
+
+    X = df[features].copy()
+    y = df[target].astype(int)
+
+    # Preprocess data
+    num_cols = X.select_dtypes(include=np.number).columns.tolist()
+    cat_cols = [c for c in X.columns if c not in num_cols]
+
+    if num_cols:
+        imp = SimpleImputer(strategy="median")
+        X[num_cols] = imp.fit_transform(X[num_cols])
+
+    if cat_cols:
+        X = pd.get_dummies(X, columns=cat_cols, drop_first=True)
+
+    # Balance if needed
+    if df[target].value_counts().min() < 0.1 * len(df):
+        X["__target__"] = y
+        maj = X[X["__target__"] == 0]
+        mino = X[X["__target__"] == 1]
+        min_up = resample(mino, replace=True, n_samples=len(maj), random_state=42)
+        X = pd.concat([maj, min_up])
+        y = X["__target__"]
+        X = X.drop(columns=["__target__"])
+
+    st.sidebar.header("3. Choose ML Model")
+    model_name = st.sidebar.selectbox(
+        "Select model",
+        ["Logistic Regression", "Random Forest", "Decision Tree",
+         "Gradient Boosting", "KNN", "SVM", "Naive Bayes"]
+    )
+
+    def get_model(name):
+        return {
+            "Logistic Regression": LogisticRegression(max_iter=500),
+            "Random Forest": RandomForestClassifier(n_estimators=200),
+            "Decision Tree": DecisionTreeClassifier(),
+            "Gradient Boosting": GradientBoostingClassifier(),
+            "KNN": KNeighborsClassifier(),
+            "SVM": SVC(probability=True),
+            "Naive Bayes": GaussianNB(),
+        }[name]
+
+    test_size = st.sidebar.slider("Test Size (%)", 10, 40, 20) / 100
+
+    if st.button("Train Model"):
+        model = get_model(model_name)
+
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=test_size, random_state=42
+        )
+
+        model.fit(X_train, y_train)
+        preds = model.predict(X_test)
+
+        # Predictive step
+        try:
+            proba = model.predict_proba(X_test)[:, 1]
+        except:
+            proba = np.zeros(len(preds))
+
+        st.subheader("📊 Model Evaluation")
+        st.text(classification_report(y_test, preds))
+
+        try:
+            st.write("ROC-AUC:", roc_auc_score(y_test, proba))
+        except:
+            st.write("ROC-AUC unavailable")
+
+        # Full dataset churn score
+        try:
+            df["ml_churn_score"] = model.predict_proba(X)[:, 1]
+        except:
+            df["ml_churn_score"] = 0
+
+        st.subheader("🔥 ML Churn Results")
+        st.write(df.sort_values("ml_churn_score", ascending=False).head(20))
+
+        st.download_button(
+            "Download ML Churn CSV",
+            df.to_csv(index=False),
+            "ml_churn_results.csv",
+            "text/csv"
+        )
+
+        # Save model
+        joblib.dump(model, "model.pkl")
+        with open("model.pkl", "rb") as f:
+            st.download_button("Download model.pkl", f, "model.pkl")
+
+    st.stop()
+
+# Sentiment Analysis + Predictive ML Modelling
+if numerical_uploaded and sentiment_uploaded:
+
+    st.header("🔥 Combined ML + Sentiment Churn Prediction")
+
+    df = pd.read_csv(num_file)
+    fb = pd.read_csv(sent_file)
+
+    if "customer_id" not in df.columns:
+        df["customer_id"] = df.index.astype(str)
+    if "customer_id" not in fb.columns:
+        fb["customer_id"] = fb.index.astype(str)
+
+    df["customer_id"] = df["customer_id"].astype(str)
+    fb["customer_id"] = fb["customer_id"].astype(str)
+
+    if "feedback" not in fb.columns:
+        st.error("Feedback CSV must contain a 'feedback' column.")
+        st.stop()
+
+    fb["sentiment_score"] = fb["feedback"].apply(
+        lambda x: analyzer.polarity_scores(str(x))["compound"]
+    )
+
+    fb["sentiment_label"] = fb["sentiment_score"].apply(
+        lambda s: "Positive" if s > 0.05 else "Negative" if s < -0.05 else "Neutral"
+    )
+
+    # ---------------- Predictive ML Model ----------------
+    if "churn" not in df.columns:
+        numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
+        if len(numeric_cols) > 0:
+            metric = numeric_cols[0]
+            cutoff = df[metric].quantile(0.30)
+            df["churn"] = (df[metric] <= cutoff).astype(int)
+        else:
+            df["churn"] = np.random.randint(0, 2, len(df))
+
+    y = df["churn"]
+    X = df.drop(columns=["churn", "customer_id"], errors="ignore")
+
+    num_cols = X.select_dtypes(include=np.number).columns.tolist()
+    cat_cols = [c for c in X.columns if c not in num_cols]
+
+    if num_cols:
+        imp = SimpleImputer(strategy="median")
+        X[num_cols] = imp.fit_transform(X[num_cols])
+
+    if cat_cols:
+        X = pd.get_dummies(X, columns=cat_cols, drop_first=True)
+
+    model = RandomForestClassifier(n_estimators=200)
+    model.fit(X, y)
+    df["ml_churn_score"] = model.predict_proba(X)[:, 1]
+
+    # ---------------- MERGE ----------------
+    merged = df.merge(fb, on="customer_id", how="left")
+
+    # 70% ML + 30% Sentiment for final scoring
+    merged["final_churn_score"] = (
+        0.7 * merged["ml_churn_score"] +
+        0.3 * (1 - merged["sentiment_score"].fillna(0))
+    ).clip(0, 1)
+
+    st.subheader("🔥 FINAL Combined Churn Ranking")
+    st.write(merged.sort_values("final_churn_score", ascending=False).head(20))
+
+    st.download_button(
+        "Download Final Combined CSV",
+        merged.to_csv(index=False),
+        "combined_churn_results.csv",
+        "text/csv"
+    )
